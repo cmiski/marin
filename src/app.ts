@@ -6,6 +6,7 @@ import { env } from './config/env.js';
 import { logger } from './config/logger.js';
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
 import { searchEventsRouter } from './search/search-events.router.js';
+import { productSearchRouter } from './search/product-search.router.js';
 
 export function createApp(): express.Express {
   const app = express();
@@ -24,6 +25,7 @@ export function createApp(): express.Express {
     });
   });
 
+  app.use('/api/search', productSearchRouter);
   app.use('/webhooks/search', searchEventsRouter);
 
   app.use(notFoundHandler);
