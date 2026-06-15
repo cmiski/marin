@@ -1,8 +1,10 @@
 import type { estypes } from '@elastic/elasticsearch';
+import { env } from '../config/env.js';
 import { elasticsearch } from '../infra/elasticsearch.js';
 import { PRODUCT_INDEX_ALIAS } from './product-index.js';
 import type { ProductSearchDocument } from './product-document.js';
 import type { ProductSearchRequest } from './product-search-request.js';
+import { getCachedValue, productSearchCacheNamespace } from './search-cache.js';
 
 type SearchFacetEntry = {
   key: string;
@@ -45,68 +47,78 @@ export class ProductSearchService {
   public async searchProducts(
     request: ProductSearchRequest
   ): Promise<ProductSearchResponse> {
-    const response = await elasticsearch.search<ProductSearchDocument>({
-      index: PRODUCT_INDEX_ALIAS,
-      from: (request.page - 1) * request.pageSize,
-      size: request.pageSize,
-      track_total_hits: true,
-      query: buildSearchQuery(request),
-      sort: buildSort(request),
-      aggs: buildAggregations(request),
-      highlight:
-        request.query === undefined
-          ? undefined
-          : {
-              pre_tags: ['<em>'],
-              post_tags: ['</em>'],
-              fields: {
-                title: {},
-                subtitle: {},
-                description: {
-                  fragment_size: 140,
-                  number_of_fragments: 1
-                },
-                searchableText: {
-                  fragment_size: 140,
-                  number_of_fragments: 1
-                }
-              }
-            }
-    });
-
-    const total = extractTotal(response.hits.total);
-    const results = response.hits.hits.flatMap((hit) => {
-      if (hit._source === undefined) {
-        return [];
-      }
-
-      return [
-        {
-          ...hit._source,
-          score: hit._score ?? 0,
-          highlights: flattenHighlights(hit.highlight)
-        }
-      ];
-    });
-
-    return {
-      query: request.query ?? null,
-      sort: request.sort,
-      pagination: {
-        page: request.page,
-        pageSize: request.pageSize,
-        total,
-        totalPages: Math.max(1, Math.ceil(total / request.pageSize))
+    return getCachedValue({
+      namespace: productSearchCacheNamespace,
+      ttlSeconds: env.SEARCH_CACHE_TTL_SECONDS,
+      keyPayload: {
+        type: 'search',
+        request
       },
-      results,
-      facets: {
-        brands: parseLabeledTermsFacet(response.aggregations, 'brands', 'label'),
-        categories: parseLabeledTermsFacet(response.aggregations, 'categories', 'label'),
-        tags: parseNestedLabeledTermsFacet(response.aggregations, 'tags', 'items', 'label'),
-        priceRanges: parsePriceRangesFacet(response.aggregations, 'priceRanges'),
-        availability: parseAvailabilityFacet(response.aggregations, 'availability')
+      loader: async () => {
+        const response = await elasticsearch.search<ProductSearchDocument>({
+          index: PRODUCT_INDEX_ALIAS,
+          from: (request.page - 1) * request.pageSize,
+          size: request.pageSize,
+          track_total_hits: true,
+          query: buildSearchQuery(request),
+          sort: buildSort(request),
+          aggs: buildAggregations(request),
+          highlight:
+            request.query === undefined
+              ? undefined
+              : {
+                  pre_tags: ['<em>'],
+                  post_tags: ['</em>'],
+                  fields: {
+                    title: {},
+                    subtitle: {},
+                    description: {
+                      fragment_size: 140,
+                      number_of_fragments: 1
+                    },
+                    searchableText: {
+                      fragment_size: 140,
+                      number_of_fragments: 1
+                    }
+                  }
+                }
+        });
+
+        const total = extractTotal(response.hits.total);
+        const results = response.hits.hits.flatMap((hit) => {
+          if (hit._source === undefined) {
+            return [];
+          }
+
+          return [
+            {
+              ...hit._source,
+              score: hit._score ?? 0,
+              highlights: flattenHighlights(hit.highlight)
+            }
+          ];
+        });
+
+        return {
+          query: request.query ?? null,
+          sort: request.sort,
+          pagination: {
+            page: request.page,
+            pageSize: request.pageSize,
+            total,
+            totalPages: Math.max(1, Math.ceil(total / request.pageSize))
+          },
+          results,
+          facets: {
+            brands: parseLabeledTermsFacet(response.aggregations, 'brands', 'label'),
+            categories: parseLabeledTermsFacet(response.aggregations, 'categories', 'label'),
+            tags: parseNestedLabeledTermsFacet(response.aggregations, 'tags', 'items', 'label'),
+            priceRanges: parsePriceRangesFacet(response.aggregations, 'priceRanges'),
+            availability: parseAvailabilityFacet(response.aggregations, 'availability')
+          }
+        };
       }
-    };
+    });
   }
 }
 
@@ -186,6 +198,23 @@ function buildSearchQuery(request: ProductSearchRequest): estypes.QueryDslQueryC
                                 }
                               }
                             }
+                          }
+                        },
+                        {
+                          multi_match: {
+                            query: request.query,
+                            fields: [
+                              'title^5',
+                              'subtitle^2',
+                              'searchableText^2',
+                              'brand.name^2',
+                              'category.name^1.5',
+                              'description'
+                            ],
+                            fuzziness: 'AUTO',
+                            prefix_length: 1,
+                            max_expansions: 20,
+                            boost: 1.5
                           }
                         }
                       ],

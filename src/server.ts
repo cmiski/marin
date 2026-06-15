@@ -3,6 +3,7 @@ import { createApp } from './app.js';
 import { env } from './config/env.js';
 import { logger } from './config/logger.js';
 import { prisma } from './infra/prisma.js';
+import { redis } from './infra/redis.js';
 import { searchEventConsumer } from './search/search-event-consumer.js';
 import { setupProductIndex } from './search/setup-indices.js';
 
@@ -28,7 +29,7 @@ function shutdown(signal: NodeJS.Signals): void {
         logger.error('Failed to stop RabbitMQ consumer cleanly', { error: consumerError });
       })
       .finally(() => {
-        void prisma.$disconnect().finally(() => {
+        void Promise.allSettled([prisma.$disconnect(), redis.quit()]).finally(() => {
           if (error) {
             logger.error('HTTP server shutdown failed', { error });
             process.exit(1);

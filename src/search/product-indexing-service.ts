@@ -9,6 +9,7 @@ import {
   type ProductSearchDocument
 } from './product-document.js';
 import { findProductsForIndexing } from './product-source.js';
+import { invalidateProductSearchCache } from './search-cache.js';
 
 type UpsertResult = {
   indexed: number;
@@ -42,6 +43,10 @@ export class ProductIndexingService {
       this.bulkUpsertProducts(upsertIds),
       this.bulkDeleteProducts(deleteIds)
     ]);
+
+    if (upserted.indexed > 0 || upserted.missing.length > 0 || deleted.deleted > 0) {
+      await invalidateProductSearchCache();
+    }
 
     return {
       indexed: upserted.indexed,
