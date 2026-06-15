@@ -28,5 +28,21 @@ export default tseslint.config(
         }
       ]
     }
+  },
+  {
+    files: ['src/**/*.test.ts'],
+    rules: {
+      '@typescript-eslint/no-unsafe-member-access': 'off',
+      '@typescript-eslint/require-await': 'off'
+    }
+  },
+  {
+    files: ['*.cjs'],
+    languageOptions: {
+      globals: {
+        process: 'readonly',
+        require: 'readonly'
+      }
+    }
   }
 );

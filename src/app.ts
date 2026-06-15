@@ -1,3 +1,4 @@
+import 'reflect-metadata';
 import compression from 'compression';
 import cors from 'cors';
 import express from 'express';
