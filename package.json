@@ -15,7 +15,8 @@
     "test:watch": "jest --watch",
     "lint": "eslint .",
     "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev"
+    "prisma:migrate": "prisma migrate dev",
+    "search:setup-index": "tsx src/search/setup-indices.ts"
   },
   "dependencies": {
     "@elastic/elasticsearch": "^8.15.2",
