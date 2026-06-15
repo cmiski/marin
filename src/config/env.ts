@@ -38,6 +38,11 @@ const envSchema = z.object({
   RABBITMQ_SEARCH_INDEX_QUEUE: z.string().default('search.index.events'),
   RABBITMQ_PREFETCH: z.coerce.number().int().positive().default(25),
   ENABLE_RABBITMQ_CONSUMER: booleanFromString.default(false),
+  ENABLE_OUTBOX_WORKER: booleanFromString.default(true),
+  OUTBOX_WORKER_INTERVAL_MS: z.coerce.number().int().positive().default(5000),
+  OUTBOX_WORKER_BATCH_SIZE: z.coerce.number().int().positive().max(100).default(25),
+  OUTBOX_WORKER_MAX_ATTEMPTS: z.coerce.number().int().positive().default(5),
+  REINDEX_BATCH_SIZE: z.coerce.number().int().positive().max(500).default(100),
   ENABLE_SEARCH_CACHE: booleanFromString.default(true),
   SEARCH_CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(60),
   AUTOCOMPLETE_CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(120)

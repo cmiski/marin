@@ -5,6 +5,7 @@ import { logger } from './config/logger.js';
 import { prisma } from './infra/prisma.js';
 import { redis } from './infra/redis.js';
 import { searchEventConsumer } from './search/search-event-consumer.js';
+import { searchOutboxWorker } from './search/search-outbox-worker.js';
 import { setupProductIndex } from './search/setup-indices.js';
 
 const app = createApp();
@@ -14,6 +15,7 @@ async function start(): Promise<void> {
   await prisma.$connect();
   await setupProductIndex();
   await searchEventConsumer.start();
+  searchOutboxWorker.start();
 
   server.listen(env.PORT, () => {
     logger.info(`Search service listening on port ${String(env.PORT)}`);
@@ -29,7 +31,11 @@ function shutdown(signal: NodeJS.Signals): void {
         logger.error('Failed to stop RabbitMQ consumer cleanly', { error: consumerError });
       })
       .finally(() => {
-        void Promise.allSettled([prisma.$disconnect(), redis.quit()]).finally(() => {
+        void Promise.allSettled([
+          searchOutboxWorker.stop(),
+          prisma.$disconnect(),
+          redis.quit()
+        ]).finally(() => {
           if (error) {
             logger.error('HTTP server shutdown failed', { error });
             process.exit(1);

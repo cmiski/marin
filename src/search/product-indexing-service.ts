@@ -20,6 +20,11 @@ type DeleteResult = {
   deleted: number;
 };
 
+type IndexingOptions = {
+  recordProcessedEvents?: boolean;
+  invalidateCache?: boolean;
+};
+
 export type IndexingBatchResult = {
   indexed: number;
   deleted: number;
@@ -27,7 +32,12 @@ export type IndexingBatchResult = {
 };
 
 export class ProductIndexingService {
-  public async processEvents(events: IndexingEvent[]): Promise<IndexingBatchResult> {
+  public async processEvents(
+    events: IndexingEvent[],
+    options: IndexingOptions = {}
+  ): Promise<IndexingBatchResult> {
+    const recordProcessedEvents = options.recordProcessedEvents ?? true;
+    const invalidateCache = options.invalidateCache ?? true;
     const upsertIds = uniqueIds(
       events
         .filter((event) => event.operation === 'UPSERT')
@@ -40,11 +50,14 @@ export class ProductIndexingService {
     ).filter((productId) => !upsertIds.includes(productId));
 
     const [upserted, deleted] = await Promise.all([
-      this.bulkUpsertProducts(upsertIds),
-      this.bulkDeleteProducts(deleteIds)
+      this.bulkUpsertProducts(upsertIds, { recordProcessedEvents }),
+      this.bulkDeleteProducts(deleteIds, { recordProcessedEvents })
     ]);
 
-    if (upserted.indexed > 0 || upserted.missing.length > 0 || deleted.deleted > 0) {
+    if (
+      invalidateCache &&
+      (upserted.indexed > 0 || upserted.missing.length > 0 || deleted.deleted > 0)
+    ) {
       await invalidateProductSearchCache();
     }
 
@@ -55,7 +68,12 @@ export class ProductIndexingService {
     };
   }
 
-  public async bulkUpsertProducts(productIds: string[]): Promise<UpsertResult> {
+  public async bulkUpsertProducts(
+    productIds: string[],
+    options: Pick<IndexingOptions, 'recordProcessedEvents'> = {}
+  ): Promise<UpsertResult> {
+    const recordProcessedEvents = options.recordProcessedEvents ?? true;
+
     if (productIds.length === 0) {
       return {
         indexed: 0,
@@ -92,24 +110,26 @@ export class ProductIndexingService {
       }
     }
 
-    await this.recordProcessedEvents([
-      ...productIds
-        .filter((productId) => !missing.includes(productId))
-        .map((aggregateId) => ({
+    if (recordProcessedEvents) {
+      await this.recordProcessedEvents([
+        ...productIds
+          .filter((productId) => !missing.includes(productId))
+          .map((aggregateId) => ({
+            aggregateType: 'product',
+            aggregateId,
+            operation: 'UPSERT' as const,
+            status: 'SUCCEEDED' as const,
+            errorMessage: null
+          })),
+        ...missing.map((aggregateId) => ({
           aggregateType: 'product',
           aggregateId,
           operation: 'UPSERT' as const,
-          status: 'SUCCEEDED' as const,
-          errorMessage: null
-        })),
-      ...missing.map((aggregateId) => ({
-        aggregateType: 'product',
-        aggregateId,
-        operation: 'UPSERT' as const,
-        status: 'FAILED' as const,
-        errorMessage: 'Product missing from source of truth'
-      }))
-    ]);
+          status: 'FAILED' as const,
+          errorMessage: 'Product missing from source of truth'
+        }))
+      ]);
+    }
 
     return {
       indexed: products.length,
@@ -117,7 +137,12 @@ export class ProductIndexingService {
     };
   }
 
-  public async bulkDeleteProducts(productIds: string[]): Promise<DeleteResult> {
+  public async bulkDeleteProducts(
+    productIds: string[],
+    options: Pick<IndexingOptions, 'recordProcessedEvents'> = {}
+  ): Promise<DeleteResult> {
+    const recordProcessedEvents = options.recordProcessedEvents ?? true;
+
     if (productIds.length === 0) {
       return {
         deleted: 0
@@ -143,15 +168,17 @@ export class ProductIndexingService {
       throw new Error('Elasticsearch bulk delete failed');
     }
 
-    await this.recordProcessedEvents(
-      productIds.map((aggregateId) => ({
-        aggregateType: 'product',
-        aggregateId,
-        operation: 'DELETE' as const,
-        status: 'SUCCEEDED' as const,
-        errorMessage: null
-      }))
-    );
+    if (recordProcessedEvents) {
+      await this.recordProcessedEvents(
+        productIds.map((aggregateId) => ({
+          aggregateType: 'product',
+          aggregateId,
+          operation: 'DELETE' as const,
+          status: 'SUCCEEDED' as const,
+          errorMessage: null
+        }))
+      );
+    }
 
     return {
       deleted: productIds.length
