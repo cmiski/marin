@@ -5,6 +5,7 @@ import helmet from 'helmet';
 import { env } from './config/env.js';
 import { logger } from './config/logger.js';
 import { errorHandler, notFoundHandler } from './middleware/error-handler.js';
+import { searchEventsRouter } from './search/search-events.router.js';
 
 export function createApp(): express.Express {
   const app = express();
@@ -22,6 +23,8 @@ export function createApp(): express.Express {
       environment: env.NODE_ENV
     });
   });
+
+  app.use('/webhooks/search', searchEventsRouter);
 
   app.use(notFoundHandler);
   app.use(errorHandler);
