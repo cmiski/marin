@@ -1,4 +1,5 @@
 # Elasticsearch Search Service
+Intern ID: CITS670
 
 Production-grade Node.js and TypeScript search service backed by PostgreSQL, Prisma, Elasticsearch, Redis, and optional RabbitMQ indexing events.
 
